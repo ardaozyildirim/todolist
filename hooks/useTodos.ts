@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { Todo } from '../types/todo';
 import { todoService } from '../services/todoService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export function useTodos() {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -74,6 +75,77 @@ export function useTodos() {
     }
   }, []);
 
+  // Todoları yedekleme
+  const backupTodos = useCallback(async () => {
+    try {
+      const timestamp = new Date().toISOString();
+      const backupData = JSON.stringify({
+        timestamp,
+        todos
+      });
+      
+      await AsyncStorage.setItem('todos_backup', backupData);
+      return {
+        success: true,
+        timestamp
+      };
+    } catch (error) {
+      console.error('Backup error:', error);
+      return {
+        success: false,
+        error
+      };
+    }
+  }, [todos]);
+
+  // Yedekten geri yükleme
+  const restoreFromBackup = useCallback(async () => {
+    try {
+      const backupData = await AsyncStorage.getItem('todos_backup');
+      
+      if (!backupData) {
+        return {
+          success: false,
+          error: 'Kullanılabilir yedek bulunamadı'
+        };
+      }
+      
+      const { timestamp, todos: backupTodos } = JSON.parse(backupData);
+      
+      // Doğrudan todos'u güncelleyerek UI'da hemen gösterelim
+      await todoService.saveTodos(backupTodos);
+      setTodos(backupTodos.sort((a, b) => b.createdAt - a.createdAt));
+      
+      return {
+        success: true,
+        timestamp
+      };
+    } catch (error) {
+      console.error('Restore error:', error);
+      return {
+        success: false,
+        error
+      };
+    }
+  }, []);
+
+  // Tüm todoları temizleme
+  const clearAllTodos = useCallback(async () => {
+    try {
+      await todoService.saveTodos([]);
+      setTodos([]);
+      return {
+        success: true
+      };
+    } catch (error) {
+      console.error('Clear todos error:', error);
+      return {
+        success: false,
+        error
+      };
+    }
+  }, []);
+
   return {
     todos,
     loading,
@@ -83,5 +155,8 @@ export function useTodos() {
     deleteTodo,
     toggleTodoComplete,
     loadTodos,
+    backupTodos,
+    restoreFromBackup,
+    clearAllTodos
   };
 } 
